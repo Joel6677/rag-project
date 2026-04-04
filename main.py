@@ -1,4 +1,5 @@
 import pandas as pd
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 def load_csv():
@@ -130,13 +131,50 @@ def create_text_documents(df):
     agg_docs = create_aggregated_documents(df)
     stat_docs = create_statistical_documents(df)
     all_docs = row_docs + agg_docs + stat_docs
+    print(f"Total documents: {len(all_docs)}")
     return all_docs
+
+
+def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=200):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+
+    chunked_docs = []
+
+    for doc in all_docs:
+        chunks = splitter.split_text(doc["text"])
+
+        for i, chunk in enumerate(chunks):
+            chunked_docs.append({
+                "text": chunk,
+                "metadata": {
+                    **doc["metadata"],
+                    "chunk_index": i,
+                    "total_chunks": len(chunks)
+                }
+            })
+
+    return chunked_docs
 
 
 def main():
     df = load_csv()
     all_docs = create_text_documents(df)
-    print(all_docs[0])
+
+    for size in [500, 1000, 2000]:
+        chunks = chunk_documents(all_docs, chunk_size=size)
+        print(f"Chunk size {size}: {len(chunks)} chunks")
+
+    chunks = chunk_documents(all_docs, chunk_size=500)
+    print(f"\nUsing chunk_size=1000: {len(chunks)} chunks ready for ChromaDB")
+
+    lengths = [len(doc["text"]) for doc in all_docs]
+    print(f"Shortest document: {min(lengths)} chars")
+    print(f"Longest document:  {max(lengths)} chars")
+    print(f"Average length:    {sum(lengths)//len(lengths)} chars")
 
 
 if __name__ == "__main__":
