@@ -1,4 +1,6 @@
 import pandas as pd
+import chromadb
+from chromadb.utils import embedding_functions
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
@@ -160,6 +162,75 @@ def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=200):
     return chunked_docs
 
 
+def create_vector_store(chunks, collection_name="superstore"):
+    # Step 1: Create ChromaDB client (stores data locally)
+    client = chromadb.PersistentClient(path="./chroma_db")
+
+    # Step 2: Set up the embedding model
+    embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+
+    # Delete existing collection if it exists to avoid duplicate ID errors
+    try:
+        client.delete_collection(name=collection_name)
+        print(f"Cleared existing collection '{collection_name}'")
+    except Exception as e:
+        print(f"No existing collection to clear: {e}")
+
+    # Step 3: Create a collection (like a table in a database)
+    collection = client.get_or_create_collection(
+        name=collection_name,
+        embedding_function=embedding_fn  # type: ignore
+    )
+
+    # Step 4: Add chunks in batches
+    batch_size = 500
+    total = len(chunks)
+
+    for i in range(0, total, batch_size):
+        batch = chunks[i:i + batch_size]
+
+        ids = [f"chunk_{i + j}" for j in range(len(batch))]
+        texts = [doc["text"] for doc in batch]
+        metadatas = [doc["metadata"] for doc in batch]
+
+        collection.add(
+            ids=ids,
+            documents=texts,
+            metadatas=metadatas
+        )
+        print(f"Stored {min(i + batch_size, total)}/{total} chunks...")
+
+    print(
+        f"Done! Collection '{collection_name}' has {collection.count()} chunks")
+    return collection
+
+
+def inspect_vector_store(collection):
+    print("\n--- ChromaDB Inspection ---")
+    print(f"Total chunks: {collection.count()}")
+
+    # Peek at first 3 chunks
+    results = collection.peek(3)
+    for i in range(len(results["ids"])):
+        print(f"\nChunk {i+1}:")
+        print(f"  ID:       {results['ids'][i]}")
+        print(f"  Text:     {results['documents'][i]}")
+        print(f"  Metadata: {results['metadatas'][i]}")
+
+    # Test metadata filtering
+    print("\n--- Metadata Filter Test ---")
+    filtered = collection.get(where={"region": "West"})
+    print(f"Chunks with region=West: {len(filtered['ids'])}")
+
+    filtered = collection.get(where={"category": "Furniture"})
+    print(f"Chunks with category=Furniture: {len(filtered['ids'])}")
+
+    filtered = collection.get(where={"year": 2017})
+    print(f"Chunks with year=2017: {len(filtered['ids'])}")
+
+
 def main():
     df = load_csv()
     all_docs = create_text_documents(df)
@@ -175,6 +246,10 @@ def main():
     print(f"Shortest document: {min(lengths)} chars")
     print(f"Longest document:  {max(lengths)} chars")
     print(f"Average length:    {sum(lengths)//len(lengths)} chars")
+
+    collection = create_vector_store(chunks)
+
+    inspect_vector_store(collection)
 
 
 if __name__ == "__main__":
