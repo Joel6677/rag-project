@@ -1,7 +1,9 @@
 import pandas as pd
 import chromadb
-from chromadb.utils import embedding_functions
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_ollama import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage
 
 
 def load_csv():
@@ -167,7 +169,7 @@ def create_vector_store(chunks, collection_name="superstore"):
     client = chromadb.PersistentClient(path="./chroma_db")
 
     # Step 2: Set up the embedding model
-    embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+    embedding_fn = SentenceTransformerEmbeddingFunction(
         model_name="all-MiniLM-L6-v2"
     )
 
@@ -231,25 +233,207 @@ def inspect_vector_store(collection):
     print(f"Chunks with year=2017: {len(filtered['ids'])}")
 
 
+def query_vector_store(collection, query_text, n_results=5, filters=None):
+    print("\n--- Query ---")
+    print(f"Question: {query_text}")
+    if filters:
+        print(f"Filters:  {filters}")
+
+    # Similarity search with optional metadata filtering
+    results = collection.query(
+        query_texts=[query_text],
+        n_results=n_results,
+        where=filters if filters else None
+    )
+
+    # Format results nicely
+    chunks = []
+    for i in range(len(results["ids"][0])):
+        chunk = {
+            "id":       results["ids"][0][i],
+            "text":     results["documents"][0][i],
+            "metadata": results["metadatas"][0][i],
+            "distance": results["distances"][0][i]
+        }
+        chunks.append(chunk)
+        print(f"\nResult {i+1} (distance: {chunk['distance']:.4f}):")
+        print(f"  Text:     {chunk['text']}")
+        print(f"  Metadata: {chunk['metadata']}")
+
+    return chunks
+
+
+def generate_answer(query_text, retrieved_chunks, llm, strategy="zero-shot"):
+
+    context = "\n\n".join(
+        [f"[Chunk {i+1}]: {chunk['text']}"
+         for i, chunk in enumerate(retrieved_chunks)]
+    )
+
+    system_message = SystemMessage(content="""
+        You are a retail sales analyst for Superstore (2014-2017).
+        Use ONLY the data provided in the context below to answer questions.
+        Do NOT use any knowledge outside of the provided context.
+        Always cite specific numbers from the context in your answer.
+        If the context does not contain enough information, say "Insufficient data in context".
+    """)
+
+    if strategy == "zero-shot":
+        human_message = HumanMessage(content=f"""
+Context:
+{context}
+
+Question: {query_text}
+        """)
+
+    elif strategy == "few-shot":
+        human_message = HumanMessage(content=f"""
+Context:
+{context}
+
+Here is an example of a good answer format:
+Q: Which category had the highest sales?
+A: Technology had the highest sales with $836,154.03, followed by Furniture 
+   with $741,999.80 and Office Supplies with $719,047.03.
+
+Now answer in the same format:
+Question: {query_text}
+    """)
+
+    elif strategy == "chain-of-thought":
+        human_message = HumanMessage(content=f"""
+Context:
+{context}
+
+Answer the question by following these steps:
+Step 1: Identify the relevant data from the context
+Step 2: Compare or calculate if needed
+Step 3: Conclude with specific numbers
+
+Question: {query_text}
+        """)
+
+    else:
+        raise ValueError(
+            f"Unknown strategy '{strategy}'. Choose from: zero-shot, few-shot, chain-of-thought")
+
+    response = llm.invoke([system_message, human_message])
+    return response.content
+
+
+def rag_pipeline(collection, query_text, llm, n_results=5, filters=None, strategy="zero-shot"):
+    print(f"\n{'='*60}")
+    print(f"Query:    {query_text}")
+    print(f"Strategy: {strategy}")
+    if filters:
+        print(f"Filters:  {filters}")
+    print('='*60)
+
+    # Step 1: Retrieve relevant chunks
+    retrieved_chunks = query_vector_store(
+        collection,
+        query_text=query_text,
+        n_results=n_results,
+        filters=filters
+    )
+
+    # Step 2: Generate answer
+    print("\n--- Generated Answer ---")
+    answer = generate_answer(
+        query_text, retrieved_chunks, llm=llm, strategy=strategy)
+    print(answer)
+
+    return answer
+
+
 def main():
     df = load_csv()
+
     all_docs = create_text_documents(df)
 
-    for size in [500, 1000, 2000]:
-        chunks = chunk_documents(all_docs, chunk_size=size)
-        print(f"Chunk size {size}: {len(chunks)} chunks")
+    # Only rebuild if needed
+    rebuild = True  # set to False to skip rebuilding
 
-    chunks = chunk_documents(all_docs, chunk_size=500)
-    print(f"\nUsing chunk_size=1000: {len(chunks)} chunks ready for ChromaDB")
+    if rebuild:
+        for size in [500, 1000, 2000]:
+            chunks = chunk_documents(all_docs, chunk_size=size)
+            print(f"Chunk size {size}: {len(chunks)} chunks")
 
-    lengths = [len(doc["text"]) for doc in all_docs]
-    print(f"Shortest document: {min(lengths)} chars")
-    print(f"Longest document:  {max(lengths)} chars")
-    print(f"Average length:    {sum(lengths)//len(lengths)} chars")
+        chunks = chunk_documents(all_docs, chunk_size=500)
+        print(
+            f"\nUsing chunk_size=500: {len(chunks)} chunks ready for ChromaDB")
 
-    collection = create_vector_store(chunks)
+        lengths = [len(doc["text"]) for doc in all_docs]
+        print(f"Shortest document: {min(lengths)} chars")
+        print(f"Longest document:  {max(lengths)} chars")
+        print(f"Average length:    {sum(lengths)//len(lengths)} chars")
 
-    inspect_vector_store(collection)
+        collection = create_vector_store(chunks)
+    else:
+        # Load existing collection
+        client = chromadb.PersistentClient(path="./chroma_db")
+        embedding_fn = SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        collection = client.get_collection(
+            name="superstore",
+            embedding_function=embedding_fn  # type: ignore
+        )
+        print(f"Loaded existing collection with {collection.count()} chunks")
+
+    # inspect_vector_store(collection)
+
+    llm = ChatOllama(model="phi3", temperature=0)
+
+    # 1. Trend analysis — zero-shot
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="What were the total sales each year?",
+        n_results=5,
+        filters={"chunk_type": "yearly_summary"},
+        strategy="zero-shot"
+    )
+
+    # 2. Category analysis — few-shot
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="Which category had the highest profit?",
+        n_results=5,
+        filters={"chunk_type": "category_summary"},
+        strategy="few-shot"
+    )
+
+    # 3. Regional analysis — chain-of-thought
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="How did the West region perform compared to other regions?",
+        n_results=5,
+        filters={"chunk_type": "regional_summary"},
+        strategy="chain-of-thought"
+    )
+
+    # 4. Comparative analysis — chain-of-thought
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="Compare sales and profit across all regions in 2017",
+        n_results=8,
+        filters={"year": 2017},
+        strategy="chain-of-thought"
+    )
+
+    # 5. Statistical analysis — zero-shot
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="What are the most discounted sub-categories?",
+        n_results=5,
+        filters={"chunk_type": "statistical_summary"},
+        strategy="zero-shot"
+    )
 
 
 if __name__ == "__main__":
