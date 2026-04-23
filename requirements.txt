@@ -5,4 +5,4 @@ langchain-text-splitters
 langchain-ollama
 langchain-community
 chromadb
-sentence-transformer
+sentence-transformers

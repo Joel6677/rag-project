@@ -55,6 +55,24 @@ def create_aggregated_documents(df):
         )
         documents.append({"text": text, "metadata": {
                          "chunk_type": "yearly_summary", "year": int(year)}})
+    # Monthly summaries
+    for month, group in df.groupby("Month"):
+        text = (
+            f"Month {month} summary across all years: Total sales ${group['Sales'].sum():,.2f}, "
+            f"profit ${group['Profit'].sum():,.2f}, {len(group)} orders."
+        )
+        documents.append({"text": text, "metadata": {
+            "chunk_type": "monthly_summary", "month": int(month)}})
+
+    # Sub-category summaries
+    for subcat, group in df.groupby("Sub-Category"):
+        text = (
+            f"{subcat} sub-category summary: Total sales ${group['Sales'].sum():,.2f}, "
+            f"profit ${group['Profit'].sum():,.2f}, "
+            f"{len(group)} orders, average discount {group['Discount'].mean()*100:.1f}%."
+        )
+        documents.append({"text": text, "metadata": {
+            "chunk_type": "subcategory_summary", "sub_category": subcat}})
     # Regional summaries
     for region, group in df.groupby("Region"):
         text = (
@@ -138,8 +156,7 @@ def create_text_documents(df):
     print(f"Total documents: {len(all_docs)}")
     return all_docs
 
-
-def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=200):
+def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=50):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
