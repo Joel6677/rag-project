@@ -156,6 +156,7 @@ def create_text_documents(df):
     print(f"Total documents: {len(all_docs)}")
     return all_docs
 
+
 def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=50):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -369,13 +370,15 @@ def main():
     all_docs = create_text_documents(df)
 
     # Only rebuild if needed
-    rebuild = True  # set to False to skip rebuilding
+    rebuild = False  # set to False to skip rebuilding
 
     if rebuild:
+        # test chunks - only for printing
         for size in [500, 1000, 2000]:
-            chunks = chunk_documents(all_docs, chunk_size=size)
-            print(f"Chunk size {size}: {len(chunks)} chunks")
+            test_chunks = chunk_documents(all_docs, chunk_size=size)
+            print(f"Chunk size {size}: {len(test_chunks)} chunks")
 
+        # Working chunks - used for ChromaDB
         chunks = chunk_documents(all_docs, chunk_size=500)
         print(
             f"\nUsing chunk_size=500: {len(chunks)} chunks ready for ChromaDB")
@@ -449,6 +452,68 @@ def main():
         query_text="What are the most discounted sub-categories?",
         n_results=5,
         filters={"chunk_type": "statistical_summary"},
+        strategy="zero-shot"
+    )
+
+    # 6.
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="Which year had the lowest sales?",
+        n_results=5,
+        filters={"chunk_type": "yearly_summary"},
+        strategy="zero-shot"
+    )
+
+    # 7.
+    rag_pipeline(
+        collection,
+        llm=llm,
+        query_text="Which region had the highest profit in 2017?",
+        n_results=5,
+        filters={"year": 2017},
+        strategy="zero-shot"
+    )
+
+    # "Which month had the highest sales?"
+    rag_pipeline(
+        collection, llm=llm,
+        query_text="Which month had the highest total sales?",
+        n_results=12,                                    # all 12 months
+        filters={"chunk_type": "monthly_summary"},
+        strategy="zero-shot"                             # simple fact
+    )
+
+    # "How did Bookcases perform overall?"
+    rag_pipeline(
+        collection, llm=llm,
+        query_text="How did Bookcases perform in terms of sales and profit?",
+        n_results=3,
+        filters={"chunk_type": "subcategory_summary"},
+        strategy="zero-shot"
+    )
+
+    # "Compare West and East profit in 2016 vs 2017"
+    rag_pipeline(
+        collection, llm=llm,
+        query_text="Compare West and East region profit in 2016 versus 2017",
+        n_results=8,
+        # has all region+year combos
+        filters={"chunk_type": "region_year_summary"},
+        strategy="chain-of-thought"                      # comparison needed
+    )
+
+    # "What is the profit margin for Technology?"
+    rag_pipeline(
+        collection, llm=llm,
+        query_text="What is the profit margin for the Technology category?",
+        n_results=3,
+        filters={
+            "$and": [
+                {"chunk_type": {"$eq": "statistical_summary"}},
+                {"category": {"$eq": "Technology"}}
+            ]
+        },
         strategy="zero-shot"
     )
 
