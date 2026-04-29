@@ -16,6 +16,10 @@ def load_csv():
 
     return df
 
+#### INDEXING ####
+
+# Put each row in the data table to sentence format
+
 
 def create_row_documents(df):
     documents = []
@@ -41,6 +45,8 @@ def create_row_documents(df):
         documents.append({"text": text, "metadata": metadata})
 
     return documents
+
+# aggregations (sales, profit, dicount)
 
 
 def create_aggregated_documents(df):
@@ -157,7 +163,7 @@ def create_text_documents(df):
     return all_docs
 
 
-def chunk_documents(all_docs, chunk_size=1000, chunk_overlap=50):
+def chunk_documents(all_docs, chunk_size=500, chunk_overlap=50):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -250,6 +256,8 @@ def inspect_vector_store(collection):
     filtered = collection.get(where={"year": 2017})
     print(f"Chunks with year=2017: {len(filtered['ids'])}")
 
+#### RETRIEVAL ####
+
 
 def query_vector_store(collection, query_text, n_results=5, filters=None):
     print("\n--- Query ---")
@@ -279,6 +287,8 @@ def query_vector_store(collection, query_text, n_results=5, filters=None):
         print(f"  Metadata: {chunk['metadata']}")
 
     return chunks
+
+#### GENERATION ####
 
 
 def generate_answer(query_text, retrieved_chunks, llm, strategy="zero-shot"):
@@ -455,7 +465,7 @@ def main():
         strategy="zero-shot"
     )
 
-    # 6.
+    # 6. "Which year had the lowest sales?"
     rag_pipeline(
         collection,
         llm=llm,
@@ -465,7 +475,7 @@ def main():
         strategy="zero-shot"
     )
 
-    # 7.
+    # 7. "Which region had the highest profit in 2017?"
     rag_pipeline(
         collection,
         llm=llm,
