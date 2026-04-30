@@ -8,20 +8,23 @@ Ollama installed and running locally
 
 ## Installation
 1. Clone the repository and navigate to the project folder
-bashcd rag
+```bash cd rag
+```
 2. Install Python dependencies
-bashpip install -r requirements.txt
+```bash pip install -r requirements.txt
+```
 3. Download the dataset (if needed)
 Download the Superstore Sales dataset from Kaggle:
 https://www.kaggle.com/datasets/vivek468/superstore-dataset-final
 Place the file Sample - Superstore.csv in the project root folder.
 4. Install and start Ollama
-bash# Download Ollama from https://ollama.com then run:
+```bash # Download Ollama from https://ollama.com then run:
 ollama pull phi3
 ollama serve
+```
 Usage
 First run — builds the database and runs all queries:
-bashpython main.py
+```bash python main.py```
 This will:
 
 Load and prepare the dataset
