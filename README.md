@@ -16,9 +16,11 @@ cd rag
 pip install -r requirements.txt
 ```
 3. Download the dataset (if needed)
-Download the Superstore Sales dataset from Kaggle:
+   
+- Download the Superstore Sales dataset from Kaggle:
 https://www.kaggle.com/datasets/vivek468/superstore-dataset-final
-Place the file Sample - Superstore.csv in the project root folder.
+- Place the file Sample - Superstore.csv in the project root folder.
+
 4. Install and start Ollama
 ```bash 
 # Download Ollama from https://ollama.com then run:
@@ -32,12 +34,14 @@ python main.py
 ```
 This will:
 
-Load and prepare the dataset
-Create 10,027 text documents
-Embed and store them in ChromaDB
-Run example queries using the RAG pipeline
+- Load and prepare the dataset
+- Create 10,027 text documents
+- Embed and store them in ChromaDB
+- Run example queries using the RAG pipeline
 
 Subsequent runs — skip rebuilding the database:
 Set rebuild = False in the main() function to load the existing ChromaDB collection instead of rebuilding it from scratch. This makes subsequent runs much faster.
-python# In main():
+```python
+# In main():
 rebuild = False  # change this line
+```
